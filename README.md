@@ -10,6 +10,103 @@ No frontend, no app — just a CLI.
 
 ---
 
+## How the Pipeline Actually Works
+
+There are two separate moments where AI is involved here, not one. The first
+is **when the user speaks** — that's when the entry gets read and tagged. The
+second is **when the user asks for a report**, days or weeks later — that's a
+completely different call, doing a completely different job. Keeping these
+two moments straight is the main thing to explain to a coworker seeing this
+for the first time.
+
+### The moment someone talks to Notch
+
+**User speaks.** They talk naturally about their day — no typing, no forms.
+
+**Speech becomes text.** A transcription tool — not the AI model that does
+the "thinking," just a speech-to-text tool — converts what they said into
+plain text. That text goes straight into the database exactly as spoken. This
+is the `raw_text` column: the rawest, most unprocessed version of what they
+said.
+
+**The tagging AI reads that text.** Right after transcription, a small,
+cheap AI call reads the raw text and pulls out the structured pieces Notch
+needs:
+
+- **Tags** — what kind of moment was this (a win, a collaboration moment, a
+  leadership moment, growth, a challenge)
+- **Impact note** — if the person mentioned a concrete result (a number, an
+  outcome, a "this got used by X"), that gets pulled out as its own short note
+- **Acknowledged by** — if the person mentioned that someone else recognized
+  or praised the work, that gets pulled out too. This is just what the user
+  said out loud — Notch isn't verifying it happened, it's capturing what the
+  user remembers being told.
+- **Project match** — the AI is also given the list of the user's currently
+  active projects at this point, and tries to match the entry to one of them
+  based on what was said (mentioning "the refactor" matches a project called
+  "Front-End Refactor").
+
+**The user gets a chance to confirm or correct the project match.** This is
+the important part to call out: the AI's project guess is not final. After
+tagging, the user sees which project (if any) the entry got matched to, and
+can change it — pick a different project, or mark it as not tied to any
+project at all. This keeps a person in control of their own record rather
+than trusting the AI's guess blindly. If the AI didn't find a confident match
+in the first place, the entry just stays unassigned to a project, which is
+completely fine — it still shows up in daily and tag-based reports either
+way, just not in a project-specific report.
+
+**Everything gets saved.** By the time this is done, the entry in the
+database has raw text, tags, an impact note (if there was one), who
+acknowledged it (if anyone), and a project link (if there is one, and if the
+user confirmed it) — all filled in before the user ever asks for a report.
+
+### The moment someone asks for a report
+
+**User taps "generate my report."** They pick which kind — last 7 days, a
+specific project, or a specific tag.
+
+**The app pulls the already-structured entries that match.** This is just a
+database lookup, no AI involved yet, because all the hard work of tagging
+already happened back when the entry was created.
+
+**A second, separate AI call does two things:** it writes the actual report
+narrative (the highlights, the reflection questions, the summary paragraph),
+and — only where real judgment is needed — groups entries into meaningful
+sub-patterns (for example, splitting a pile of "collaboration" entries into
+"helping teammates," "cross-team work," and "catching issues early"). Simple
+math, like what percentage of entries were collaboration this week, is not
+done by the AI at all — that's just counting, handled directly by the code,
+because it's faster, free, and always accurate.
+
+**The numbers get turned into charts.** A separate, non-AI step takes those
+percentages and produces the actual chart images — bar charts, comparisons,
+and so on. This step is deliberately not done by the AI, because a chart
+needs to be guaranteed accurate to the numbers, not guessed at.
+
+**Everything gets assembled into one finished PDF** — the written report
+plus the charts, already combined, already formatted. The user doesn't build
+anything, click into a dashboard, or wait for separate pieces to load — they
+tap one button and get one finished document back.
+
+### What's in the database, in plain terms
+
+| Column | What it means |
+| --- | --- |
+| `raw_text` | Exactly what the user said, transcribed, untouched |
+| `tags` | What kind of moment this was (win, collaboration, leadership, growth, challenge) |
+| `impact_note` | The concrete result, if the user stated one |
+| `acknowledged_by` | Who the user said noticed or praised this, if anyone |
+| `project_id` | Which project this belongs to, if any — guessed by AI, confirmed or corrected by the user |
+
+### Why it feels effortless
+
+The whole system only feels effortless to the user because all the hard work
+— transcribing, tagging, matching — happens quietly right after they talk,
+not later, and not by asking them to fill anything in themselves.
+
+---
+
 ## The point of the demo
 
 There's one architectural claim this is built to demonstrate:
