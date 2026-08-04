@@ -1,0 +1,4 @@
+anthropic>=0.40
+matplotlib>=3.8
+reportlab>=4.0
+python-dotenv>=1.0
