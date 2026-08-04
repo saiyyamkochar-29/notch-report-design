@@ -46,6 +46,28 @@ needs:
   based on what was said (mentioning "the refactor" matches a project called
   "Front-End Refactor").
 
+**What the tagging AI actually hands back.** This exact call isn't wired up in
+this demo — `seed_db.py` just writes fake versions of these fields straight
+into the database by hand, to stand in for it. But this is the shape a real
+call would return: one small, plain object per journal entry, nothing else.
+
+```json
+{
+  "tags": ["collaboration", "wins"],
+  "impact_note": "Cut the flaky checkout test failure rate from 15% to zero",
+  "acknowledged_by": "Priya",
+  "project_match": {
+    "project_name": "Front-End Refactor",
+    "confidence": "high"
+  }
+}
+```
+
+Four short fields, no writing, no narrative — just facts pulled out of one
+piece of raw text. Compare that to the report-generation example further
+down: this one is small because its only job is reading and labeling, not
+writing anything a person would read.
+
 **The user gets a chance to confirm or correct the project match.** This is
 the important part to call out: the AI's project guess is not final. After
 tagging, the user sees which project (if any) the entry got matched to, and
@@ -70,6 +92,26 @@ specific project, or a specific tag.
 database lookup, no AI involved yet, because all the hard work of tagging
 already happened back when the entry was created.
 
+**If the report needs to compare two time periods, the app pulls both,
+separately.** The "Last 7 Days" report is the example of this today — it
+shows this week against last week. To do that, the app looks up this week's
+entries and last week's entries as two plain, separate database lookups. No
+AI is involved in deciding what "last week" means or in fetching it — it's
+just calendar math (today, minus seven days) and a second query.
+
+**The app also does the comparison math itself, before AI ever gets
+involved.** Once it has both sets of entries, the code counts them up —
+what percent of this week was collaboration, what percent of last week was
+collaboration — and works out the shift between the two. This is the same
+counting the app always does, just run twice, once per period, and then
+compared. The AI is never shown last week's entries and never told what the
+comparison numbers are. It only ever sees the current period's entries, and
+it only writes about the current period. The "this went up, that went down"
+comparison exists purely in the code and in the chart — never inside
+anything the AI produces. That's deliberate: it means the comparison chart
+is always guaranteed to match the real numbers, because a model never
+touched them.
+
 **A second, separate AI call does two things:** it writes the actual report
 narrative (the highlights, the reflection questions, the summary paragraph),
 and — only where real judgment is needed — groups entries into meaningful
@@ -78,6 +120,75 @@ sub-patterns (for example, splitting a pile of "collaboration" entries into
 math, like what percentage of entries were collaboration this week, is not
 done by the AI at all — that's just counting, handled directly by the code,
 because it's faster, free, and always accurate.
+
+**What the report-writing AI actually hands back.** Unlike the tagging call
+above, this one is real — this is an actual response captured from running
+this repo's `tag` report against the `leadership` entries. Every field name
+below (`opening_snapshot`, `highlights`, `strengths`, and so on) is fixed in
+advance by the code; the AI only fills them in, it never invents new ones.
+Some list items are trimmed with `...` to keep this readable, but the shape
+— every field, every level of nesting — is complete and unedited:
+
+```json
+{
+  "opening_snapshot": "Over the past three months, you invested deliberately in the people and systems around you—not as an add-on to your work, but as the core of it. ...",
+  "dominant_themes": [
+    "teaching through pairing",
+    "building shared knowledge",
+    "enabling others to ship"
+  ],
+  "highlights": [
+    {
+      "theme": "Making room for teammates to own their work",
+      "items": [
+        {
+          "what_happened": "You paired with Nina on her first real feature, letting her drive while you answered questions...",
+          "impact": "Nina shipped the table migration on her own the following week",
+          "date": "Jun 23, 2026"
+        },
+        { "...": "...two more items in this group..." }
+      ]
+    },
+    { "...": "...two more theme groups, same shape..." }
+  ],
+  "uncounted_work": [
+    {
+      "what": "Updated the on-call runbook, correcting four out-of-date steps before the next rotation.",
+      "why_it_matters": "This kind of preventive work doesn't show up in a sprint or a shipped feature, but it directly prevents a 3am crisis. ...",
+      "date": "May 19, 2026"
+    },
+    { "...": "...one more item..." }
+  ],
+  "strengths": [
+    "You're skilled at knowing when to let others do the work, even when it costs you time in the moment. ...",
+    "...",
+    "..."
+  ],
+  "building_on": [
+    "You're already comfortable questioning designs and proposing simpler solutions—the next version of that is being the person who shapes the RFC and gets team alignment before any code changes.",
+    "..."
+  ],
+  "reflection_questions": [
+    "When you paused to write docs for the search service and the event schema instead of moving to the next ticket, what made you decide that was worth the time?",
+    "..."
+  ],
+  "forward_frame": "You've built a pattern of thinking ahead: preventing problems (the runbook fix, the interview feedback), enabling others (the pairing, the docs), and removing toil (the codemod). ...",
+  "subpattern_assignments": [
+    { "entry_id": 46, "subpattern": "Pushing back on design to simplify" },
+    { "entry_id": 49, "subpattern": "Preventive systems work" },
+    { "entry_id": 42, "subpattern": "Preventive systems work" },
+    { "...": "...one entry_id/subpattern pair per entry, 12 total for this run..." }
+  ],
+  "subpattern_summary": "Your work breaks into four distinct patterns: pairing sessions where you step back and let others drive (five entries), proactive documentation that prevents future questions (three entries), ..."
+}
+```
+
+Notice what's *not* in there: no percentages, no counts, no chart data, no
+mention of how many entries fell into each sub-pattern. `subpattern_assignments`
+is just an entry id paired with a label — the tallying (`5 entries, 41.7%`)
+happens afterward, in Python, from this list. That's the same rule from the
+top of this document showing up concretely: the AI reads and writes, it
+never counts.
 
 **The numbers get turned into charts.** A separate, non-AI step takes those
 percentages and produces the actual chart images — bar charts, comparisons,
