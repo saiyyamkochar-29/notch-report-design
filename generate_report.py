@@ -23,15 +23,6 @@ import os
 import sys
 import time
 
-# Load .env if python-dotenv is installed, so ANTHROPIC_API_KEY can live in a file
-# rather than being exported by hand every session. Optional — the env var works fine.
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
-
 import charts
 import db
 import llm
@@ -340,11 +331,12 @@ def main():
         fail(str(exc))
         return 1
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        fail("ANTHROPIC_API_KEY is not set.")
-        print("     Copy .env.example to .env and add your key, or run:")
-        print("       export ANTHROPIC_API_KEY=sk-ant-...")
-        print()
+    # Reads .env via llm.load_api_key(). Checked up front so a missing key fails
+    # in a second rather than after the fetch-and-count work.
+    try:
+        llm.load_api_key()
+    except llm.MissingAPIKeyError as exc:
+        fail(str(exc))
         return 1
 
     try:

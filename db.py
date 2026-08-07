@@ -65,6 +65,13 @@ def fmt_range(start_iso, end_iso):
             f"{end.strftime('%B')} {end.day}, {end.year}")
 
 
+def _split_tags(value):
+    """'wins, collaboration' -> ['wins', 'collaboration']. Handles NULL."""
+    if not value:
+        return []
+    return [t.strip() for t in value.split(",") if t.strip()]
+
+
 def _row_to_entry(row):
     """Turn a sqlite Row into a plain dict, with tags already split into a list."""
     return {
@@ -72,7 +79,9 @@ def _row_to_entry(row):
         "entry_date": row["entry_date"],
         "date_display": fmt_date(row["entry_date"]),
         "raw_text": row["raw_text"],
-        "tags": [t.strip() for t in row["tags"].split(",") if t.strip()],
+        "tags": _split_tags(row["tags"]),
+        # Open-vocabulary keywords from tagger.py. Empty until the entry is tagged.
+        "auto_tags": _split_tags(row["auto_tags"]),
         "project_id": row["project_id"],
         "acknowledged_by": row["acknowledged_by"],
         "impact_note": row["impact_note"],
@@ -174,6 +183,44 @@ def get_entries_by_tag(tag):
     return [_row_to_entry(r) for r in rows]
 
 
+def get_all_entries():
+    """Every entry in the database, oldest first. Used by tagger.py."""
+    conn = _connect()
+    rows = conn.execute("SELECT * FROM entries ORDER BY entry_date").fetchall()
+    conn.close()
+    return [_row_to_entry(r) for r in rows]
+
+
+def get_entries_by_auto_tag(keyword):
+    """
+    Every entry carrying a given auto tag. Same padded-LIKE trick as
+    get_entries_by_tag, so 'test' doesn't match 'flaky tests'.
+
+    This is the search path for the open vocabulary — the fixed five are what
+    reports are built on, but auto tags are how you find "everything I said
+    about oncall".
+    """
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM entries "
+        "WHERE ',' || COALESCE(auto_tags, '') || ',' LIKE ? ORDER BY entry_date",
+        (f"%,{keyword.strip().lower()},%",),
+    ).fetchall()
+    conn.close()
+    return [_row_to_entry(r) for r in rows]
+
+
+def set_auto_tags(entry_id, keywords):
+    """Write an entry's auto tags. `keywords` is a list of strings."""
+    conn = _connect()
+    conn.execute(
+        "UPDATE entries SET auto_tags = ? WHERE id = ?",
+        (",".join(keywords), entry_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_full_date_range():
     """The oldest and newest entry dates in the whole database."""
     conn = _connect()
@@ -217,6 +264,24 @@ def tag_mix_percent(entries):
         return {tag: 0.0 for tag in TAGS}
     counts = tag_counts(entries)
     return {tag: round(100 * counts[tag] / len(entries), 1) for tag in TAGS}
+
+
+def auto_tag_counts(entries, limit=None):
+    """
+    Raw counts for the open-vocabulary tags: [('flaky tests', 4), ('oncall', 3), ...].
+
+    Counts only — deliberately no percentages, and this never reaches charts.py.
+    The fixed five are a closed set, so "collaboration was 40% of the week" is a
+    stable claim you can plot and compare across weeks. Auto tags aren't: the
+    model may say 'flaky tests' one week and 'test flakiness' the next, which
+    would silently split one real theme across two bars and make a
+    week-over-week comparison lie. So these are for search and for surfacing
+    themes, not for arithmetic anyone reads as exact.
+    """
+    counts = Counter()
+    for entry in entries:
+        counts.update(entry["auto_tags"])
+    return counts.most_common(limit)
 
 
 def tag_share_of_period(tag_entries, total_entries):

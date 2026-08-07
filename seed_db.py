@@ -63,6 +63,8 @@ CREATE TABLE entries (
     entry_date TEXT,        -- ISO date
     raw_text TEXT,          -- the "voice journal" text, written as if transcribed from speech
     tags TEXT,              -- comma-separated: wins, collaboration, leadership, growth, challenges
+    auto_tags TEXT,         -- comma-separated open-vocabulary keywords, filled in by tagger.py.
+                            -- NULL until tagged. Never feeds a chart — see Backend.md.
     project_id INTEGER,     -- nullable, FK to projects
     acknowledged_by TEXT,   -- nullable — who recognized this, if anyone
     impact_note TEXT        -- nullable — a short, specific stated impact/result
@@ -435,6 +437,7 @@ def seed():
         print(f"    {tag:<14} {tag_counts[tag]:>3}  {bar}")
     print()
     print(f"  Database written to {DB_PATH}")
+    print("  Auto tags are empty — run  python tagger.py  to fill them in.")
     print()
 
     conn.close()
